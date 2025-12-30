@@ -29,13 +29,13 @@ I will gladly accept any contributions, Please submit a PR and I will review. As
 
 # Screenshots
 ### Attribute completion
-![root dropdown](res\img\img_autocomplete_1.png)
+![root dropdown](res/img/img_autocomplete_1.png)
 
 ### Literal Completion
-![literal options](res\img\img_autocomplete_2.png)
+![literal options](res/img/img_autocomplete_2.png)
 
 ### Inline Documentation
-![doc](res\img\img_autocomplete_3.png)
+![doc](res/img/img_autocomplete_3.png)
 
 ### Nested Autocompletion
-![nested completion](res\img\img_autocomplete_4.png)
+![nested completion](res/img/img_autocomplete_4.png)
