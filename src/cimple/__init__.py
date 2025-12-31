@@ -4,18 +4,19 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from arcpy import cim, version
+from arcpy import (
+    cim as _cim, 
+    version as _version,
+)
 
 __version__ = (0,0,1)
 
 # Get version info from arcpy as tuple of ints (<major>, <minor>, <build>)
 # Fallback to (0,0,0) if format is broken and __version__ info can't be determined
 try:
-    __arcpy_version__ = tuple(map(int,(*version.data['version'].split('.')[:2], version.build))) # type: ignore
+    __arcpy_version__ = tuple(map(int,(*_version.data['version'].split('.')[:2], _version.build))) # type: ignore
 except Exception:
     __arcpy_version__ = (0,0,0)
-
-CIM_BUILT = Path('cim').exists()
 
 # <Enum>: (str_name: val)
 ParsedEnum = dict[Enum, tuple[str, Any]]
@@ -25,7 +26,7 @@ ParsedCIM = tuple[str | None, dict[str, Any]]
 four_spaces = '    '
 
 
-def load(mod: ModuleType = cim) -> tuple[list[EnumType], list[type]]:
+def load(mod: ModuleType = _cim) -> tuple[list[EnumType], list[type]]:
     modules: list[ModuleType] = [mod]
     enums: list[EnumType] = []
     classes: list[type] = []
@@ -73,7 +74,7 @@ def enum_to_literal(enum: ParsedEnum) -> str:
 def base_imports() -> list[str]:
     return [
         'from __future__ import annotations\n\n',
-        'from dataclasses import (\n\tdataclass,\n\tfield as dc_field,\n)\n',
+        f'from dataclasses import (\n{four_spaces}dataclass,\n{four_spaces}field as dc_field,\n)\n\n',
     ]
 
 
@@ -94,7 +95,7 @@ def write_literals(unique_enums: dict[EnumType, ParsedEnum]) -> set[str]:
             # Write block of Literal[str, ...], Literal[int, ...], dict[str, int]
             fl.write(f'\n# {e.__name__} Typing\n')
             fl.write(f'{e.__name__} = {lit}\n')
-            fl.write(f'"""{(e.__doc__ or "NO DOC").strip()}\n\t{get_doc_link(e)}"""\n')
+            fl.write(f'"""{(e.__doc__ or "NO DOC").strip()}\n{four_spaces}"""\n')
             fl.write(f'{e.__name__}_Map = {dict(parsed.values())}\n')
     return literals
 
@@ -108,12 +109,13 @@ def build_class_attrs(
     for name, val in attrs.items():
         _attr_type = type(val).__name__
         if isinstance(val, str) and val in mods:
-            _attr_type = f'{val} = dc_field(default_factory=lambda: {val}())'
-            if mods[val].__module__ != c.__module__ and val not in imports.get(
-                modname(mods[val]), []
-            ):
-                if val not in imports[modname(mods[val])]:
+            if mods[val].__module__ != c.__module__:
+                _attr_type = f'cc.{val} = dc_field(default_factory=lambda: cc.{val}())'
+                if val not in imports.get(modname(mods[val]), []):
                     imports[modname(mods[val])].add(val)
+            else:
+                _attr_type = f'{val} = dc_field(default_factory=lambda: {val}())'
+                
         elif isinstance(val, Enum):
             _attr_type = f"{type(val).__name__} = '{val.name}'"
             imports['literals'].add(type(val).__name__)
@@ -165,7 +167,7 @@ def build_class_attrs(
             imports['arcpy'].add('Point')
         elif 'CIMExternal' in repr(val):
             e_name = repr(val).split('.')[-1][:-2]
-            _attr_type = f'{e_name} = {e_name}()'
+            _attr_type = f'{e_name} = dc_field(default_factory=lambda: {e_name}())'
             imports['CIMExternal'].add(e_name)
         elif _attr_type == 'object':
             _attr_type = 'Any = None'
@@ -178,10 +180,13 @@ def build_class_attrs(
 
 
 def parse_imps(imps: dict[str, set[str]]) -> list[str]:
+    has_cim = bool(imps.pop('._CIMCommon', False))
     return [
+        f'from .{mod} import (\n{four_spaces}{f",\n{four_spaces}".join(sorted(classes))},\n)\n\n'
+        if mod.startswith('CIM') or mod == 'literals' else
         f'from {mod} import (\n{four_spaces}{f",\n{four_spaces}".join(sorted(classes))},\n)\n\n'
         for mod, classes in imps.items()
-    ]
+    ] + (['from . import _CIMCommon as cc\n\n'] if has_cim else [])
 
 
 def get_doc_link(c: type) -> str:
@@ -196,16 +201,17 @@ def merge(
     for k in trg:
         root[k] = trg[k] | root.get(k, set())
     
-    import_order = ['typing', 'math', 'datetime', 'CIM*', 'literals']
+    import_order = ['typing', 'math', 'datetime', 'arcpy', 'CIM*', 'literals']
     _keys = list(root.keys())
     _sorted_root: dict[str, set[str]] = {}
     for mod in import_order:
         if mod in _keys:
-            _sorted_root[mod] = root[mod]
+            _sorted_root[mod] = root.pop(mod)
         elif mod == 'CIM*':
-          cim_mods = sorted(k for k in root.keys() if k.startswith('CIM'))
-          for cim_mod in cim_mods:
-              _sorted_root[cim_mod] = root[cim_mod]
+            #continue
+            cim_mods = sorted(k for k in root.keys() if k.startswith('CIM'))
+            for cim_mod in cim_mods:
+                _sorted_root[cim_mod] = root.pop(cim_mod)
     return _sorted_root
 
 
@@ -265,6 +271,12 @@ def build_cim():
                     ]
                 )
             )
+        
+        for cim_mod in list(imports):
+            if cim_mod.startswith('CIM') and cim_mod != 'CIMExternal':
+                if '._CIMCommon' not in imports:
+                    imports['._CIMCommon'] = {'._CIMCommon as cc'}
+                imports.pop(cim_mod)
         mod_files[mod] = (imports, mod_classes, all_)
 
     for m_name, (imports, d_classes, all_) in mod_files.items():
@@ -277,24 +289,42 @@ def build_cim():
             )
             fl.writelines(d_classes)
 
+    with open('cim/_CIMCommon.py', 'wt') as fl:
+        for m in sorted(mod_files):
+            fl.write(f'from .{m} import *\n')
+            
     with open('cim/__init__.py', 'wt') as fl:
         for m in sorted(mod_files):
-            fl.write(f'from {m} import *\n')
+            fl.write(f'from .{m} import *\n')
+        
+        # Write Version Tuples
+        fl.write(f'\n# CIM Build')
         fl.write(f'\n__cim_version__ = {__arcpy_version__}')
+        fl.write(f'\n# cimple Version')
+        fl.write(f'\n__version__ = {__version__}')
 
-# If this module is imported and the cim submodule isn't generated, generate it
+if __name__ == '__main__':
+    build_cim()
+
+CIM_BUILT = Path('cim').exists()
+# If this module is imported and the cim submodule isn't generated, 
+# generate it
 if not CIM_BUILT:
     build_cim()
 
 elif CIM_BUILT:
     try:
-        print('importing cim')
-        from cim import __cim_version__
-        if tuple(__cim_version__) < tuple(__arcpy_version__):
+        from cim import (
+            __cim_version__, 
+            __version__ as __existing_version__,
+        )
+        if (
+            __cim_version__ < __arcpy_version__  # type: ignore
+            or 
+            __existing_version__ < __version__
+        ):
             build_cim()
     except Exception as e:
         print(e)
         build_cim()
         
-elif __name__ == '__main__':
-    build_cim()
