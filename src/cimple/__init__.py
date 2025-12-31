@@ -4,7 +4,18 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from arcpy import cim
+from arcpy import cim, version
+
+__version__ = (0,0,1)
+
+# Get version info from arcpy as tuple of ints (<major>, <minor>, <build>)
+# Fallback to (0,0,0) if format is broken and __version__ info can't be determined
+try:
+    __arcpy_version__ = tuple(map(int,(*version.data['version'].split('.')[:2], version.build))) # type: ignore
+except Exception:
+    __arcpy_version__ = (0,0,0)
+
+CIM_BUILT = Path('cim').exists()
 
 # <Enum>: (str_name: val)
 ParsedEnum = dict[Enum, tuple[str, Any]]
@@ -198,7 +209,7 @@ def format_doc(doc: str | None) -> str:
     )
 
 
-def convert():
+def build_cim():
     enums, classes = load()
     Path('cim').mkdir(parents=True, exist_ok=True)
     unique_enums: dict[EnumType, ParsedEnum] = {}
@@ -257,9 +268,23 @@ def convert():
             fl.writelines(d_classes)
 
     with open('cim/__init__.py', 'wt') as fl:
-        for m in mod_files:
+        for m in sorted(mod_files):
             fl.write(f'from {m} import *\n')
+        fl.write(f'\n__cim_version__ = {__arcpy_version__}')
 
+# If this module is imported and the cim submodule isn't generated, generate it
+if not CIM_BUILT:
+    build_cim()
 
-if __name__ == '__main__':
-    convert()
+elif CIM_BUILT:
+    try:
+        print('importing cim')
+        from cim import __cim_version__
+        if tuple(__cim_version__) < tuple(__arcpy_version__):
+            build_cim()
+    except Exception as e:
+        print(e)
+        build_cim()
+        
+elif __name__ == '__main__':
+    build_cim()

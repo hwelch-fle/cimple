@@ -2,7 +2,7 @@
 A conversion script that takes `arcpy.cim` and re-writes it using dataclasses and string literals
 
 # Usage
-1) Clone the repo and run the `convert` function in the cimple module
+1) Clone the repo and run the `build_cim` function in the cimple module
 2) a `cim` directory will be generated that contains typed CIM definitions
 3) When writing code, you can use this generated module and switch to regular cim at runtime:
 ```python 
