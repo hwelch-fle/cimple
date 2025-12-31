@@ -3,6 +3,7 @@ from enum import Enum, EnumType
 from pathlib import Path
 from types import ModuleType
 from typing import Any
+
 from arcpy import cim
 
 # <Enum>: (str_name: val)
@@ -12,7 +13,8 @@ ParsedCIM = tuple[str | None, dict[str, Any]]
 
 four_spaces = '    '
 
-def load(mod: ModuleType=cim) -> tuple[list[EnumType], list[type]]:
+
+def load(mod: ModuleType = cim) -> tuple[list[EnumType], list[type]]:
     modules: list[ModuleType] = [mod]
     enums: list[EnumType] = []
     classes: list[type] = []
@@ -33,8 +35,10 @@ def load(mod: ModuleType=cim) -> tuple[list[EnumType], list[type]]:
                     continue
     return enums, classes
 
+
 def parse_enum(enum: EnumType):
     return {m: (m.name, m.value) for m in enum._value2member_map_.values()}
+
 
 def parse_cim(cls: type):
     attrs = {}
@@ -49,9 +53,11 @@ def parse_cim(cls: type):
         pass
     return {cls: (cls.__doc__, attrs)}
 
+
 def enum_to_literal(enum: ParsedEnum) -> str:
-    vals = list(name for name, _ in  enum.values())
+    vals = list(name for name, _ in enum.values())
     return f'Literal{vals}'
+
 
 def base_imports() -> list[str]:
     return [
@@ -59,37 +65,44 @@ def base_imports() -> list[str]:
         'from dataclasses import (\n\tdataclass,\n\tfield as dc_field,\n)\n',
     ]
 
+
 def modname(obj: type) -> str:
     return obj.__module__.split('.')[-1]
-    
+
+
 def write_literals(unique_enums: dict[EnumType, ParsedEnum]) -> set[str]:
     literals = {e.__name__ for e in unique_enums}
     with open('cim/literals.py', 'wt') as fl:
         fl.write('from typing import Literal\n')
         for e, parsed in unique_enums.items():
             lit = enum_to_literal(parsed)
-            
+
             if lit == 'Literal[]':
-                continue # Skip Empty
-            
+                continue  # Skip Empty
+
             # Write block of Literal[str, ...], Literal[int, ...], dict[str, int]
-            fl.write('\n'f'# {e.__name__} Typing\n')
+            fl.write(f'\n# {e.__name__} Typing\n')
             fl.write(f'{e.__name__} = {lit}\n')
-            fl.write(f'"""{(e.__doc__ or 'NO DOC').strip()}\n\t{get_doc_link(e)}"""\n')
+            fl.write(f'"""{(e.__doc__ or "NO DOC").strip()}\n\t{get_doc_link(e)}"""\n')
             fl.write(f'{e.__name__}_Map = {dict(parsed.values())}\n')
     return literals
 
-def build_class_attrs(attrs: dict[str, Any], mods: dict[str, type], c: type) -> tuple[list[str], dict[str, list[str]]]:
+
+def build_class_attrs(
+    attrs: dict[str, Any], mods: dict[str, type], c: type
+) -> tuple[list[str], dict[str, list[str]]]:
     class_string: list[str] = []
     imports: defaultdict[str, list[str]] = defaultdict(list)
     for name, val in attrs.items():
         _attr_type = type(val).__name__
         if isinstance(val, str) and val in mods:
             _attr_type = f'{val} = dc_field(default_factory=lambda: {val}())'
-            if mods[val].__module__ != c.__module__ and val not in imports.get(modname(mods[val]), []):
+            if mods[val].__module__ != c.__module__ and val not in imports.get(
+                modname(mods[val]), []
+            ):
                 if val not in imports[modname(mods[val])]:
                     imports[modname(mods[val])].append(val)
-            
+
         elif isinstance(val, Enum):
             _attr_type = f"{type(val).__name__} = '{val.name}'"
             imports['literals'].append(type(val).__name__)
@@ -120,25 +133,25 @@ def build_class_attrs(attrs: dict[str, Any], mods: dict[str, type], c: type) -> 
         elif val == 'inf':
             _attr_type = 'float = inf'
             imports['math'].append('inf')
-        elif repr(val).endswith('Polygon\'>'):
+        elif repr(val).endswith("Polygon'>"):
             _attr_type = 'Polygon | None = None'
             imports['arcpy'].append('Polygon')
-        elif repr(val).endswith('Extent\'>'):
+        elif repr(val).endswith("Extent'>"):
             _attr_type = 'Extent | None = None'
             imports['arcpy'].append('Extent')
-        elif repr(val).endswith('Polyline\'>'):
+        elif repr(val).endswith("Polyline'>"):
             _attr_type = 'Polyline | None = None'
             imports['arcpy'].append('Polyline')
-        elif repr(val).endswith('Geometry\'>'):
+        elif repr(val).endswith("Geometry'>"):
             _attr_type = 'Geometry | None = None'
             imports['arcpy'].append('Geometry')
-        elif repr(val).endswith('SpatialReference\'>'):
+        elif repr(val).endswith("SpatialReference'>"):
             _attr_type = 'SpatialReference | None = None'
             imports['arcpy'].append('SpatialReference')
-        elif repr(val).endswith('Multipoint\'>'):
+        elif repr(val).endswith("Multipoint'>"):
             _attr_type = 'Multipoint | None = None'
             imports['arcpy'].append('Multipoint')
-        elif repr(val).endswith('Point\'>'):
+        elif repr(val).endswith("Point'>"):
             _attr_type = 'Point | None = None'
             imports['arcpy'].append('Point')
         elif 'CIMExternal' in repr(val):
@@ -149,29 +162,41 @@ def build_class_attrs(attrs: dict[str, Any], mods: dict[str, type], c: type) -> 
             print(f'WARNING: {val} cannot be parsed Using `Any` with `None` default!')
             _attr_type = 'Any = None'
             imports['typing'].append('Any')
-        
-        class_string.append(f'{four_spaces}'f'{name}: {_attr_type}')
+
+        class_string.append(f'{four_spaces}{name}: {_attr_type}')
     return class_string, imports
+
 
 def parse_imps(imps: dict[str, list[str]]) -> list[str]:
     return [
-        f'from {mod} import (\n{four_spaces}{f',\n{four_spaces}'.join(set(classes))},\n)\n\n'
+        f'from {mod} import (\n{four_spaces}{f",\n{four_spaces}".join(set(classes))},\n)\n\n'
         for mod, classes in imps.items()
     ]
+
 
 def get_doc_link(c: type) -> str:
     return f'https://github.com/Esri/cim-spec/blob/main/docs/v3/{modname(c)}.md#{c.__name__.lower()}-1'
 
-def merge(root: dict[str, list[str]], trg: dict[str, list[str]]) -> dict[str, list[str]]:
+
+def merge(
+    root: dict[str, list[str]], trg: dict[str, list[str]]
+) -> dict[str, list[str]]:
     for k in root:
         root[k].extend(trg.get(k, []))
     for k in trg:
         root[k] = trg[k] + root.get(k, [])
     return root
 
+
 def format_doc(doc: str | None) -> str:
     doc = doc or 'NO DOC'
-    return doc.strip().replace('\n', '').replace('     ', ' ').replace('///', f'\n{four_spaces}')
+    return (
+        doc.strip()
+        .replace('\n', '')
+        .replace('     ', ' ')
+        .replace('///', f'\n{four_spaces}')
+    )
+
 
 def convert():
     enums, classes = load()
@@ -180,19 +205,13 @@ def convert():
     for enum in enums:
         unique_enums[enum] = parse_enum(enum)
     write_literals(unique_enums)
-    
+
     unique_classes: dict[type, ParsedCIM] = {}
     for c in classes:
         unique_classes.update(parse_cim(c))
-    class_modules: dict[str, str] = {
-        c.__name__: modname(c)
-        for c in unique_classes
-    }
+    class_modules: dict[str, str] = {c.__name__: modname(c) for c in unique_classes}
     mod_names = set(class_modules.values())
-    class_names = {
-        c.__name__: c
-        for c in unique_classes
-    }
+    class_names = {c.__name__: c for c in unique_classes}
 
     mod_files: dict[str, tuple[dict[str, list[str]], list[str], list[str]]] = {}
     for mod in mod_names:
@@ -202,12 +221,14 @@ def convert():
         # Base Module
         if mod == 'cim':
             continue
-        
-        for c, (doc, attrs) in filter(lambda m: modname(m[0]) == mod, unique_classes.items()):
+
+        for c, (doc, attrs) in filter(
+            lambda m: modname(m[0]) == mod, unique_classes.items()
+        ):
             attr_strs, class_imps = build_class_attrs(attrs, class_names, c)
-            class_imps = {k:v for k, v in class_imps.items() if k != mod}
-            imports = merge(imports, class_imps)      
-            all_.append(c.__name__)      
+            class_imps = {k: v for k, v in class_imps.items() if k != mod}
+            imports = merge(imports, class_imps)
+            all_.append(c.__name__)
             mod_classes.append(
                 '\n'.join(
                     [
@@ -224,19 +245,21 @@ def convert():
                 )
             )
         mod_files[mod] = (imports, mod_classes, all_)
-        
-    
+
     for m_name, (imports, d_classes, all_) in mod_files.items():
         print(f'writing {m_name}')
         with open(f'cim/{m_name}.py', 'wt') as fl:
             fl.writelines(base_imports())
             fl.writelines(parse_imps(imports))
-            fl.write(f'__all__ = [\n{four_spaces}{f',\n{four_spaces}'.join([f"'{n}'" for n in all_])},\n]\n\n')
+            fl.write(
+                f'__all__ = [\n{four_spaces}{f",\n{four_spaces}".join([f"'{n}'" for n in all_])},\n]\n\n'
+            )
             fl.writelines(d_classes)
-    
+
     with open('cim/__init__.py', 'wt') as fl:
         for m in mod_files:
             fl.write(f'from {m} import *\n')
+
 
 if __name__ == '__main__':
     convert()

@@ -1,7 +1,7 @@
 [project]
 name = "cimple"
 version = "0.1.0"
-description = "Add your description here"
+description = "Autogeneration script for cimple.cim"
 readme = "README.md"
 authors = [
     { name = "hwelch-fle", email = "91618355+hwelch-fle@users.noreply.github.com" }
@@ -15,3 +15,6 @@ cimple = "cimple:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.ruff.format]
+quote-style = "single"
