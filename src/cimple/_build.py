@@ -152,8 +152,9 @@ def build_class_attrs(attrs: dict[str, Any], mods: dict[str, type], c: type) -> 
             _attr_type = f'int = {val}'
             
         elif repr(val) == 'nan':
-            _attr_type = 'float = nan'
-            imports['math'].add('nan')
+            # Avoid using math.nan because it breaks equality checks
+            _attr_type = 'float | None = None'
+            #imports['math'].add('nan')
             
         elif repr(val) == 'inf':
             _attr_type = 'float = inf'
