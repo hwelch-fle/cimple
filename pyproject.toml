@@ -18,3 +18,7 @@ build-backend = "hatchling.build"
 
 [tool.ruff.format]
 quote-style = "single"
+
+[tool.pytest.ini_options]
+testpaths = ['tests']
+pythonpath = ['src']
