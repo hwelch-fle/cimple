@@ -30,4 +30,5 @@ elif _CIM_BUILT:
         print(e)
         print(f'Rebuilding cimple.cim')
         _build_cim()
-del _CIM_BUILT
+
+from .cim import *
