@@ -101,9 +101,10 @@ def write_literals(unique_enums: dict[EnumType, ParsedEnum]) -> set[str]:
 
 def build_class_attrs(
     attrs: dict[str, Any], mods: dict[str, type], c: type
-) -> tuple[list[str], dict[str, list[str]]]:
+) -> tuple[list[str], dict[str, set[str]]]:
     class_string: list[str] = []
-    imports: defaultdict[str, list[str]] = defaultdict(list)
+    imports: defaultdict[str, set[str]] = defaultdict(set)
+    
     for name, val in attrs.items():
         _attr_type = type(val).__name__
         if isinstance(val, str) and val in mods:
@@ -112,75 +113,73 @@ def build_class_attrs(
                 modname(mods[val]), []
             ):
                 if val not in imports[modname(mods[val])]:
-                    imports[modname(mods[val])].append(val)
-
+                    imports[modname(mods[val])].add(val)
         elif isinstance(val, Enum):
             _attr_type = f"{type(val).__name__} = '{val.name}'"
-            imports['literals'].append(type(val).__name__)
+            imports['literals'].add(type(val).__name__)
         elif isinstance(val, list):
             _attr_type = 'list[Any] = dc_field(default_factory=list[Any])'
-            imports['typing'].append('Any')
+            imports['typing'].add('Any')
         elif isinstance(val, dict):
             _attr_type = 'dict[str, Any] = dc_field(default_factory=dict[str, Any])'
-            imports['typing'].append('Any')
+            imports['typing'].add('Any')
         elif isinstance(val, str):
             _attr_type = f'str = {val or "''"}'
-        elif _attr_type == 'object':
-            _attr_type = 'Any = dc_field(default_factory=object)'
         elif val is None:
             _attr_type = 'Any = None'
         elif _attr_type == 'datetime':
             _attr_type = 'datetime = dc_field(default_factory=datetime.now)'
-            imports['datetime'].append('datetime')
+            imports['datetime'].add('datetime')
         elif isinstance(val, bool):
             _attr_type = f'bool = {val}'
         elif isinstance(val, int):
             _attr_type = f'int = {val}'
+        elif repr(val) == 'nan':
+            _attr_type = 'float = nan'
+            imports['math'].add('nan')
+        elif repr(val) == 'inf':
+            _attr_type = 'float = inf'
+            imports['math'].add('inf')
         elif isinstance(val, float):
             _attr_type = f'float = {val}'
-        elif val == 'nan':
-            _attr_type = 'float = nan'
-            imports['math'].append('nan')
-        elif val == 'inf':
-            _attr_type = 'float = inf'
-            imports['math'].append('inf')
         elif repr(val).endswith("Polygon'>"):
             _attr_type = 'Polygon | None = None'
-            imports['arcpy'].append('Polygon')
+            imports['arcpy'].add('Polygon')
         elif repr(val).endswith("Extent'>"):
             _attr_type = 'Extent | None = None'
-            imports['arcpy'].append('Extent')
+            imports['arcpy'].add('Extent')
         elif repr(val).endswith("Polyline'>"):
             _attr_type = 'Polyline | None = None'
-            imports['arcpy'].append('Polyline')
+            imports['arcpy'].add('Polyline')
         elif repr(val).endswith("Geometry'>"):
             _attr_type = 'Geometry | None = None'
-            imports['arcpy'].append('Geometry')
+            imports['arcpy'].add('Geometry')
         elif repr(val).endswith("SpatialReference'>"):
             _attr_type = 'SpatialReference | None = None'
-            imports['arcpy'].append('SpatialReference')
+            imports['arcpy'].add('SpatialReference')
         elif repr(val).endswith("Multipoint'>"):
             _attr_type = 'Multipoint | None = None'
-            imports['arcpy'].append('Multipoint')
+            imports['arcpy'].add('Multipoint')
         elif repr(val).endswith("Point'>"):
             _attr_type = 'Point | None = None'
-            imports['arcpy'].append('Point')
+            imports['arcpy'].add('Point')
         elif 'CIMExternal' in repr(val):
             e_name = repr(val).split('.')[-1][:-2]
             _attr_type = f'{e_name} = {e_name}()'
-            imports['CIMExternal'].append(e_name)
+            imports['CIMExternal'].add(e_name)
+        elif _attr_type == 'object':
+            _attr_type = 'Any = None'
         else:
             print(f'WARNING: {val} cannot be parsed Using `Any` with `None` default!')
             _attr_type = 'Any = None'
-            imports['typing'].append('Any')
-
+            imports['typing'].add('Any')
         class_string.append(f'{four_spaces}{name}: {_attr_type}')
     return class_string, imports
 
 
-def parse_imps(imps: dict[str, list[str]]) -> list[str]:
+def parse_imps(imps: dict[str, set[str]]) -> list[str]:
     return [
-        f'from {mod} import (\n{four_spaces}{f",\n{four_spaces}".join(set(classes))},\n)\n\n'
+        f'from {mod} import (\n{four_spaces}{f",\n{four_spaces}".join(sorted(classes))},\n)\n\n'
         for mod, classes in imps.items()
     ]
 
@@ -190,13 +189,24 @@ def get_doc_link(c: type) -> str:
 
 
 def merge(
-    root: dict[str, list[str]], trg: dict[str, list[str]]
-) -> dict[str, list[str]]:
+    root: dict[str, set[str]], trg: dict[str, set[str]]
+) -> dict[str, set[str]]:
     for k in root:
-        root[k].extend(trg.get(k, []))
+        root[k] |= trg.get(k, set())
     for k in trg:
-        root[k] = trg[k] + root.get(k, [])
-    return root
+        root[k] = trg[k] | root.get(k, set())
+    
+    import_order = ['typing', 'math', 'datetime', 'CIM*', 'literals']
+    _keys = list(root.keys())
+    _sorted_root: dict[str, set[str]] = {}
+    for mod in import_order:
+        if mod in _keys:
+            _sorted_root[mod] = root[mod]
+        elif mod == 'CIM*':
+          cim_mods = sorted(k for k in root.keys() if k.startswith('CIM'))
+          for cim_mod in cim_mods:
+              _sorted_root[cim_mod] = root[cim_mod]
+    return _sorted_root
 
 
 def format_doc(doc: str | None) -> str:
@@ -224,9 +234,9 @@ def build_cim():
     mod_names = set(class_modules.values())
     class_names = {c.__name__: c for c in unique_classes}
 
-    mod_files: dict[str, tuple[dict[str, list[str]], list[str], list[str]]] = {}
+    mod_files: dict[str, tuple[dict[str, set[str]], list[str], list[str]]] = {}
     for mod in mod_names:
-        imports: dict[str, list[str]] = {}
+        imports: dict[str, set[str]] = {}
         mod_classes: list[str] = []
         all_: list[str] = []
         # Base Module
