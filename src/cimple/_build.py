@@ -344,3 +344,30 @@ def build_cim():
             ]
         )
     )
+    
+def check_cimple(root: str):
+    _CIM_BUILT = (Path(root).parent / 'cim').exists()
+
+    # If this module is imported and the cim submodule isn't generated, 
+    # generate it
+    if not _CIM_BUILT:
+        print(f'Building cimple.cim')
+        build_cim()
+
+    elif _CIM_BUILT:
+        try:
+            from .cim import (
+            __cim_version__,
+            __version__ as __existing_version__,
+        )
+            if (
+            __cim_version__ < __arcpy_version__  # type: ignore
+            or
+            __existing_version__ < __version__
+        ):
+                print(f'Updating cimple.cim')
+                build_cim()
+        except Exception as e:
+            print(e)
+            print(f'Rebuilding cimple.cim')
+            build_cim()
