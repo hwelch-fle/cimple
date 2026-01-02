@@ -74,7 +74,8 @@ def enum_to_literal(enum: ParsedEnum) -> str:
 def base_imports() -> list[str]:
     return [
         'from __future__ import annotations\n\n',
-        f'from dataclasses import (\n{four_spaces}dataclass,\n{four_spaces}field as dc_field,\n)\n\n',
+        f'from dataclasses import (\n{four_spaces}dataclass,\n{four_spaces}field as dc_field,\n)\n',
+        f'from ._base import CIMBase\n\n'
     ]
 
 
@@ -262,7 +263,7 @@ def build_dataclass(cls: type, attrs: list[str]) -> str:
         [
             '@dataclass',
             # Class Header
-            f'class {cls.__name__}:',
+            f'class {cls.__name__}(metaclass=CIMBase):',
             # Doc
             f'{four_spaces}"""{get_doc_link(cls)}\n\n'
             f'{four_spaces}{format_doc(cls.__doc__)}'
@@ -272,6 +273,13 @@ def build_dataclass(cls: type, attrs: list[str]) -> str:
         ]
     )
 
+def build_base_class() -> str:
+    return """class CIMBase(type):
+    def __subclasscheck__(cls, subclass: type) -> bool:
+        return set(getattr(cls, '__dataclass_fields__', 'a')).issubset(set(getattr(subclass, '__dataclass_fields__', 'b')))
+    
+    def __instancecheck__(self, instance: object) -> bool:
+        return issubclass(type(instance), self)"""
 
 def build_cim():
     enums, classes = load()
@@ -325,9 +333,21 @@ def build_cim():
             )
         )
     
+    (MOD_ROOT / 'cim/_base.py').write_text(
+        ''.join(
+            [
+                build_base_class(),
+            ]
+        )
+    )
+    
     # Write _CIMCommon
     (MOD_ROOT / 'cim/_CIMCommon.py').write_text(
-        ''.join([f'from .{m} import *\n' for m in sorted(mod_files)])
+        ''.join(
+            [
+                *[f'from .{m} import *\n' for m in sorted(mod_files)],
+            ]
+        )
     )
     
     # Write cim.__init__
