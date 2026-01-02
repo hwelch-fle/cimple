@@ -75,7 +75,7 @@ def base_imports() -> list[str]:
     return [
         'from __future__ import annotations\n\n',
         f'from dataclasses import (\n{four_spaces}dataclass,\n{four_spaces}field as dc_field,\n)\n',
-        f'from ._base import CIMBase\n\n'
+        f'from ._base import CIMMeta\n\n'
     ]
 
 
@@ -263,7 +263,7 @@ def build_dataclass(cls: type, attrs: list[str]) -> str:
         [
             '@dataclass',
             # Class Header
-            f'class {cls.__name__}(metaclass=CIMBase):',
+            f'class {cls.__name__}(metaclass=CIMMeta):',
             # Doc
             f'{four_spaces}"""{get_doc_link(cls)}\n\n'
             f'{four_spaces}{format_doc(cls.__doc__)}'
@@ -274,7 +274,7 @@ def build_dataclass(cls: type, attrs: list[str]) -> str:
     )
 
 def build_base_class() -> str:
-    return """class CIMBase(type):
+    return """class CIMMeta(type):
     def __subclasscheck__(cls, subclass: type) -> bool:
         return set(getattr(cls, '__dataclass_fields__', 'a')).issubset(set(getattr(subclass, '__dataclass_fields__', 'b')))
     
