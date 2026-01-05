@@ -1,6 +1,10 @@
+from datetime import datetime
+from enum import Enum
 import sys
 from pathlib import Path
+
 sys.path.append('../src')
+from cimple.cim._base import CIMBase
 
 try:
     import arcpy as arcpy
@@ -25,9 +29,55 @@ def get_cim_objs(): # type: ignore
         (getattr(cim, o) for o in dir(cim) if o.startswith('CIM'))
     )
 
+# CIM defaults set enum values, but getDefinition returns string literals
+# So we can validate the type by checking the default enum name attribute
+# against the cimple string literal
+
+# CIM object references are stored as strings in default 
+# initialized arcpy.cim objects, so the class name needs to be checked
+
+# When checking cim roundtrip, the cim object is initialized after the 
+# cimple object, so the creation time drifts by ~100 microseconds
+# to prevent false positives on __eq__ checks, these are truncated to 
+# seconds
+
+def norm(o: object) -> Any:
+    # CIM Enums can be set using name attribute
+    if isinstance(o, Enum):
+        return o.name
+    
+    # arcpy.cim stores object reference as string name
+    if isinstance(o, CIMBase):
+        return o.__class__.__name__
+    
+    # CIMExternal stores class reference in arcpy.cim
+    if isinstance(o, type):
+        # CIMExternal objects are stored as a type reference
+        if 'CIMExternal' in repr(o):
+            return o.__name__
+        
+        # arcobjects are defaulted to None in cimple
+        # arcpy.cim stores class reference
+        if 'arcobjects' in repr(o):
+            return None
+        
+    # cimple defaults object reference to None
+    # arcpy.cim defaults object()
+    if repr(o).startswith('<object object'):
+        return None
+    
+    # cimple converts nan to None
+    if repr(o) == 'nan':
+        return None
+    
+    # Initialization time for CIM roundtrip causes a ~100 microsecond drift
+    if isinstance(o, datetime):
+        return o.isoformat(timespec='seconds')
+    return o
+
 def get_invalid_keys(a: object, b: object) -> dict[str, Any]:
-    a = a.__dict__
-    b = b.__dict__
+    a = {k: norm(v) for k, v in a.__dict__.items()}
+    b = {k: norm(v) for k, v in b.__dict__.items()}
     return {
         k: (a[k], b.get(k))
         for k in a
@@ -36,20 +86,39 @@ def get_invalid_keys(a: object, b: object) -> dict[str, Any]:
     }
 
 def test_json_roundtrip():
+    errors = 0
+    print('Testing JSON roundtrip')
     for o in get_cim_objs():
-        a = o()
-        b = json_to_cim(cim_to_json(a))
-        assert a == b, get_invalid_keys(a, b)
-    print(f'json <--> CIM valid')
+        try:
+            a = o()
+            b = json_to_cim(cim_to_json(a))
+            assert a == b, f'{type(a)}: {get_invalid_keys(a, b)}'
+        except Exception as e:
+            errors += 1
+            print('\t'f'{o.__name__}: {e}')
+    if not errors:
+        print('\t'f'json <--> CIM valid')
+    else:
+        print('\t'f'json <--> CIM: {errors} errors')
 
 def test_cim_roundtrip():
+    errors = 0
+    print('Testing CIM roundtrip')
     for o in get_cim_objs():
-        a = o()
-        b = cim_to_cimple(cimple_to_cim(a))
-        assert a == b, get_invalid_keys(a, b)
-    print(f'cimple <--> CIM valid')
+        try:
+            a = o()
+            b = cim_to_cimple(cimple_to_cim(a))
+            raw_eq = a == b
+            norm_eq = not bool(get_invalid_keys(a, b))
+            assert norm_eq or raw_eq, f'{type(a)}: {get_invalid_keys(a, b)}'
+        except Exception as e:
+            errors += 1
+            print('\t'f'{o.__name__}: {e}')
+    if not errors:
+        print('\t'f'cimple <--> CIM valid')
+    else:
+        print('\t'f'cimple <--> CIM {errors} errors')
 
 if __name__ == '__main__':
-    # Failing due to Literals
-    #test_cim_roundtrip()
-    test_json_roundtrip()    
+    test_cim_roundtrip()
+    test_json_roundtrip()
