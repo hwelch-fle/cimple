@@ -92,7 +92,7 @@ def build_literals(enums: dict[EnumType, ParsedEnum]) -> list[str]:
         # Write block of Literal[str, ...], Literal[int, ...], dict[str, int]
         literal_strings.append(f'\n# {e.__name__} Typing\n')
         literal_strings.append(f'{e.__name__} = {lit}\n')
-        literal_strings.append(f'"""{(e.__doc__ or "NO DOC").strip()}\n{four_spaces}"""\n')
+        literal_strings.append(f'"""{(e.__doc__ or "NO DOC").strip()}\n"""\n')
         literal_strings.append(f'{e.__name__}_Map = {dict(parsed.values())}\n')
     return literal_strings
 
