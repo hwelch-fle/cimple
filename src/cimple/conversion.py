@@ -1,7 +1,11 @@
 import json
 from dataclasses import is_dataclass
 from typing import Any
-from arcpy import AsShape, SpatialReference
+from arcpy import (
+    AsShape,
+    SpatialReference,
+    cim as arcpy_cim,
+)
 from datetime import datetime
 import math
 
@@ -69,8 +73,7 @@ def cim_to_cimple(cim_obj: Any) -> Any:
     raise ValueError(f'{cim_obj} is not a valid CIM object!')
 
 def cimple_to_cim(cimple_obj: Any) -> Any:
-    from arcpy import cim as _cim
-    cim_obj = getattr(_cim, cimple_obj.__class__.__name__, None)
+    cim_obj = getattr(arcpy_cim, cimple_obj.__class__.__name__, None)
     if cim_obj:
         return cim_obj(**cimple_obj.__dict__)
     raise ValueError(f'{cimple_obj} is not a valid cimple object!')
