@@ -11,6 +11,8 @@ from .cim import *
 from .conversion import (
     cimpleJSONDecoder as cimpleJSONDecoder, 
     cimpleJSONEncoder as cimpleJSONEncoder,
+    cimJSONEncoder as cimJSONEncoder,
+    cimJSONDecoder as cimJSONDecoder,
     
     # cimple json converters
     json_to_cimple as json_to_cimple, 
