@@ -276,8 +276,8 @@ def build_dataclass(cls: type, attrs: list[str]) -> str:
 def build_meta_class() -> str:
     return """class CIMMeta(type):
     def __subclasscheck__(cls, subclass: type) -> bool:
-        cls_fields: dict[str, Any]|None = getattr(cls, '__dataclass_fields__', None)
-        sub_fields: dict[str, Any]|None = getattr(subclass, '__dataclass_fields__', None)
+        cls_fields: dict[str, object]|None = getattr(cls, '__dataclass_fields__', None)
+        sub_fields: dict[str, object]|None = getattr(subclass, '__dataclass_fields__', None)
         if cls_fields is None or sub_fields is None:
             return False
         return cls_fields.keys() <= sub_fields.keys()
