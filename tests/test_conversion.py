@@ -15,10 +15,12 @@ except ImportError:
 from dataclasses import is_dataclass
 from typing import Any
 from cimple import (
-    cim_to_json, 
-    json_to_cim,
+    cimple_to_json, 
+    json_to_cimple,
     cim_to_cimple,
     cimple_to_cim,
+    cim_to_json,
+    json_to_cim,
 )
 from cimple import cim
 
@@ -88,25 +90,43 @@ def get_invalid_keys(a: object, b: object) -> dict[str, Any]:
         or not any([a[k] == b[k], a[k] is b[k]])
     }
 
-def test_json_roundtrip():
+def test_cimple_json_roundtrip():
     errors = 0
-    print('Testing JSON roundtrip')
+    print('Testing cimple JSON roundtrip')
     for o in get_cim_objs():
         try:
             a = o()
-            b = json_to_cim(cim_to_json(a))
+            b = json_to_cimple(cimple_to_json(a))
             assert a == b, f'{type(a)}: {get_invalid_keys(a, b)}'
         except Exception as e:
             errors += 1
             print('\t'f'{o.__name__}: {e}')
     if not errors:
-        print('\t'f'json <--> CIM valid')
+        print('\t'f'json <--> cimple valid')
     else:
-        print('\t'f'json <--> CIM: {errors} errors')
+        print('\t'f'json <--> cimple: {errors} errors')
 
+def test_cim_json_roundtrip():
+    errors = 0
+    print('Testing cim JSON roundtrip')
+    for o in get_cim_objs():
+        try:
+            a = o()
+            b = json_to_cim(cim_to_json(a))
+            raw_eq = a == b
+            norm_eq = not bool(get_invalid_keys(a, b))
+            assert raw_eq or norm_eq, f'{type(a)}: {get_invalid_keys(a, b)}'
+        except Exception as e:
+            errors += 1
+            print('\t'f'{o.__name__}: {e}')
+    if not errors:
+        print('\t'f'json <--> cim valid')
+    else:
+        print('\t'f'json <--> cim: {errors} errors')
+        
 def test_cim_roundtrip():
     errors = 0
-    print('Testing CIM roundtrip')
+    print('Testing cim roundtrip')
     for o in get_cim_objs():
         try:
             a = o()
@@ -118,10 +138,11 @@ def test_cim_roundtrip():
             errors += 1
             print('\t'f'{o.__name__}: {e}')
     if not errors:
-        print('\t'f'cimple <--> CIM valid')
+        print('\t'f'cimple <--> cim valid')
     else:
-        print('\t'f'cimple <--> CIM {errors} errors')
+        print('\t'f'cimple <--> cim {errors} errors')
 
 if __name__ == '__main__':
     test_cim_roundtrip()
-    test_json_roundtrip()
+    test_cimple_json_roundtrip()
+    test_cim_json_roundtrip()
