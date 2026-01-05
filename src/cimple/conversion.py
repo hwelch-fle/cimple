@@ -79,6 +79,10 @@ def cimple_to_cim(cimple_obj: Any) -> Any:
         return [cimple_to_cim(o) for o in cimple_obj]
     cim_obj = getattr(arcpy_cim, cimple_obj.__class__.__name__, None)
     if cim_obj:
-        return cim_obj(**{k: cimple_to_cim(v) for k, v in cimple_obj.__dict__.items()})
+        # CIM objects from the arcpy.cim module cannot be initialized with values
+        # We need to initialize the object then update the instance __dict__
+        cim_obj = cim_obj()
+        cim_obj.__dict__.update({k: cimple_to_cim(v) for k, v in cimple_obj.__dict__.items()})
+        return cim_obj
     return cimple_obj
     
