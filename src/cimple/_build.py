@@ -75,7 +75,7 @@ def base_imports() -> list[str]:
     return [
         'from __future__ import annotations\n\n',
         f'from dataclasses import (\n{four_spaces}dataclass,\n{four_spaces}field as dc_field,\n)\n',
-        f'from ._base import CIMMeta\n\n'
+        f'from ._base import CIMBase\n\n'
     ]
 
 
@@ -263,7 +263,7 @@ def build_dataclass(cls: type, attrs: list[str]) -> str:
         [
             '@dataclass',
             # Class Header
-            f'class {cls.__name__}(metaclass=CIMMeta):',
+            f'class {cls.__name__}(CIMBase):',
             # Doc
             f'{four_spaces}"""{get_doc_link(cls)}\n\n'
             f'{four_spaces}{format_doc(cls.__doc__)}'
@@ -273,14 +273,21 @@ def build_dataclass(cls: type, attrs: list[str]) -> str:
         ]
     )
 
-def build_base_class() -> str:
+def build_meta_class() -> str:
     return """class CIMMeta(type):
     def __subclasscheck__(cls, subclass: type) -> bool:
-        return set(getattr(cls, '__dataclass_fields__', 'a')).issubset(set(getattr(subclass, '__dataclass_fields__', 'b')))
+        cls_fields: dict[str, Any]|None = getattr(cls, '__dataclass_fields__', None)
+        sub_fields: dict[str, Any]|None = getattr(subclass, '__dataclass_fields__', None)
+        if cls_fields is None or sub_fields is None:
+            return False
+        return cls_fields.keys() <= sub_fields.keys()
     
     def __instancecheck__(self, instance: object) -> bool:
         return issubclass(type(instance), self)"""
 
+def build_base_class() -> str:
+    return """class CIMBase(metaclass=CIMMeta): ...
+    """
 def build_cim():
     enums, classes = load()
     (MOD_ROOT / 'cim').mkdir(parents=True, exist_ok=True)
@@ -336,6 +343,8 @@ def build_cim():
     (MOD_ROOT / 'cim/_base.py').write_text(
         ''.join(
             [
+                build_meta_class(),
+                '\n\n',
                 build_base_class(),
             ]
         )
