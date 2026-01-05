@@ -164,31 +164,31 @@ def build_class_attrs(attrs: dict[str, Any], mods: dict[str, type], c: type) -> 
         elif isinstance(val, float):
             _attr_type = f'float = {val}'
             
-        elif repr(val).endswith("Polygon'>"):
+        elif repr(val).endswith(".Polygon'>"):
             _attr_type = 'Polygon | None = None'
             imports['arcpy'].add('Polygon')
             
-        elif repr(val).endswith("Extent'>"):
+        elif repr(val).endswith(".Extent'>"):
             _attr_type = 'Extent | None = None'
             imports['arcpy'].add('Extent')
             
-        elif repr(val).endswith("Polyline'>"):
+        elif repr(val).endswith(".Polyline'>"):
             _attr_type = 'Polyline | None = None'
             imports['arcpy'].add('Polyline')
             
-        elif repr(val).endswith("Geometry'>"):
+        elif repr(val).endswith(".Geometry'>"):
             _attr_type = 'Geometry | None = None'
             imports['arcpy'].add('Geometry')
             
-        elif repr(val).endswith("SpatialReference'>"):
+        elif repr(val).endswith(".SpatialReference'>"):
             _attr_type = 'SpatialReference | None = None'
             imports['arcpy'].add('SpatialReference')
             
-        elif repr(val).endswith("Multipoint'>"):
+        elif repr(val).endswith(".Multipoint'>"):
             _attr_type = 'Multipoint | None = None'
             imports['arcpy'].add('Multipoint')
             
-        elif repr(val).endswith("Point'>"):
+        elif repr(val).endswith(".Point'>"):
             _attr_type = 'Point | None = None'
             imports['arcpy'].add('Point')
         
@@ -276,6 +276,9 @@ def build_dataclass(cls: type, attrs: list[str]) -> str:
 def build_meta_class() -> str:
     return """class CIMMeta(type):
     def __subclasscheck__(cls, subclass: type) -> bool:
+        if type.__subclasscheck__(cls, subclass):
+            return True
+        
         cls_fields: dict[str, object]|None = getattr(cls, '__dataclass_fields__', None)
         sub_fields: dict[str, object]|None = getattr(subclass, '__dataclass_fields__', None)
         if cls_fields is None or sub_fields is None:
@@ -283,10 +286,17 @@ def build_meta_class() -> str:
         return cls_fields.keys() <= sub_fields.keys()
     
     def __instancecheck__(self, instance: object) -> bool:
+        if type.__instancecheck__(self, instance):
+            return True
+        
         return issubclass(type(instance), self)"""
 
 def build_base_class() -> str:
-    return """class CIMBase(metaclass=CIMMeta): ...
+    return """class CIMBase(metaclass=CIMMeta):
+    def __setattr__(self, name: str, value: object) -> None:
+        if isinstance(value, Enum):
+            value = value.name
+        return super().__setattr__(name, value)
     """
 def build_cim():
     enums, classes = load()
@@ -343,6 +353,8 @@ def build_cim():
     (MOD_ROOT / 'cim/_base.py').write_text(
         ''.join(
             [
+                'from enum import Enum',
+                '\n\n',
                 build_meta_class(),
                 '\n\n',
                 build_base_class(),
