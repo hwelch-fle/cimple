@@ -67,14 +67,18 @@ def json_to_cim(cim_json: str) -> Any:
     return json.loads(cim_json, cls=JSONCIMDecoder)
 
 def cim_to_cimple(cim_obj: Any) -> Any:
+    if isinstance(cim_obj, list):
+        return [cim_to_cimple(o) for o in cim_obj]
     cimple_obj = getattr(cim, cim_obj.__class__.__name__, None)
     if cimple_obj:
-        return cimple_obj(**cim_obj.__dict__)
-    raise ValueError(f'{cim_obj} is not a valid CIM object!')
+        return cimple_obj(**{k: cim_to_cimple(v) for k, v in cim_obj.__dict__.items()})
+    return cim_obj
 
 def cimple_to_cim(cimple_obj: Any) -> Any:
+    if isinstance(cimple_obj, list):
+        return [cimple_to_cim(o) for o in cimple_obj]
     cim_obj = getattr(arcpy_cim, cimple_obj.__class__.__name__, None)
     if cim_obj:
-        return cim_obj(**cimple_obj.__dict__)
-    raise ValueError(f'{cimple_obj} is not a valid cimple object!')
+        return cim_obj(**{k: cimple_to_cim(v) for k, v in cimple_obj.__dict__.items()})
+    return cimple_obj
     
