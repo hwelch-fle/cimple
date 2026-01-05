@@ -45,7 +45,7 @@ class JSONCIMDecoder(json.JSONDecoder):
         
         elif isinstance(obj, str):
             if obj == 'nan':
-                return math.nan
+                return None
             elif obj == 'inf':
                 return math.inf
             try:
