@@ -1,10 +1,9 @@
-from datetime import datetime
+import datetime
 from enum import Enum
 import sys
 from pathlib import Path
 
 sys.path.append('../src')
-from cimple.cim._base import CIMBase
 
 try:
     import arcpy as arcpy
@@ -47,7 +46,7 @@ def norm(o: object) -> Any:
         return o.name
     
     # arcpy.cim stores object reference as string name
-    if isinstance(o, CIMBase):
+    if isinstance(o, cim._base.CIMBase):
         return o.__class__.__name__
     
     # CIMExternal stores class reference in arcpy.cim
@@ -71,7 +70,7 @@ def norm(o: object) -> Any:
         return None
     
     # Initialization time for CIM roundtrip causes a ~100 microsecond drift
-    if isinstance(o, datetime):
+    if isinstance(o, datetime.datetime):
         return o.isoformat(timespec='seconds')
     return o
 
