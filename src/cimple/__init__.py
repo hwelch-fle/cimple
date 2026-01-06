@@ -31,3 +31,4 @@ if __name__ == '__main__':
     # rebuild the cim when run
     from ._build import build_cim
     build_cim()
+    from .cim import *

@@ -9,7 +9,7 @@ from arcpy import (
     version as _version,
 )
 
-__version__ = (0,0,1)
+__version__ = (0,1,0)
 MOD_ROOT = Path(__file__).parent
 
 # Get version info from arcpy as tuple of ints (<major>, <minor>, <build>)
