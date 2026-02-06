@@ -11,7 +11,7 @@ from arcpy import (
 
 TARGET_VERSION: Literal['v2', 'v3'] = 'v3'
 """Target cim version (required appropriate CIM module and will pull docs from that version)"""
-WARN_MISSING = False
+WARN_MISSING = True
 """Print out a message when an attribute is missing a definition in the docs"""
 
 __version__ = (0,1,0)
@@ -129,10 +129,58 @@ def build_class_attrs(attrs: dict[str, Any], mods: dict[str, type], c: type, doc
     imports: defaultdict[str, set[str]] = defaultdict(set)
     class_name = c.__name__
     class_doc = doc.get(class_name, {})
+    mod_doc: dict[str, list[str]] = {}
     # Get all atrtribute doc from base classes since cimple is flat
     bases = [b.__name__ for b in c.__mro__ if b.__name__ != 'object']
+    mod_doc.update(doc.get('CIMDefinition', {}))
+    
+    # Pull in doc from bases and incorrectly named objects
     for b in bases:
-        class_doc.update(doc.get(b, {}))
+        # Different Doc Name
+        if 'Base' in b:
+            mod_doc.update(doc.get(b.replace('Base', '')+'Definition', {}))
+        if 'Basic' in b:
+            mod_doc.update(doc.get(b.replace('Basic', '')+'Definition', {}))
+        if b.endswith('Bar'):
+            mod_doc.update(doc.get(b.replace('Bar', 'Marks'), {}))
+        if b+'Definition' in doc:
+            mod_doc.update(doc.get(b+'Definition', {}))
+        
+        # Split Doc
+        if b == 'CIMNumberFormat':
+            mod_doc.update(doc.get('CIMNumericFormat', {}))
+        if b == 'CIMDataConnection':
+            mod_doc.update(doc.get('CIMStandardDataConnection', {}))
+            mod_doc.update(doc.get('CIMFeatureDatasetDataConnection', {}))
+            mod_doc.update(doc.get('CIMNetworkDiagramDataConnection', {}))
+        if b == 'CIMGroupElement':
+            mod_doc.update(doc.get('CIMElementContainer', {}))
+        if b in ('CIMLegendItem', 'CIMNestedLegendItem'):
+            mod_doc.update(doc.get('CIMLegendItemLeader', {}))
+            mod_doc.update(doc.get('CIMHorizontalItem', {}))
+            mod_doc.update(doc.get('CIMNestedLegendItemArrangement', {}))
+        if 'Layer' in b:
+            mod_doc.update(doc.get('CIMLayerDefinition', {}))
+            mod_doc.update(doc.get(f'{b}Definition', {}))
+        if 'Table' in b:
+            mod_doc.update(doc.get('CIMTableDefinition', {}))
+            mod_doc.update(doc.get('CIMDisplayTableDefinition', {}))
+            mod_doc.update(doc.get(f'{b}Definition', {}))
+        if 'DataConnection' in b:
+            mod_doc.update(doc.get('CIMDataConnection', {}))
+            mod_doc.update(doc.get('CIMStandardDataConnection', {}))
+        if 'FeatureTemplateModel' in b:
+            mod_doc.update(doc.get(b.replace('FeatureTemplateModel', 'TemplateModel'), {}))
+        if 'Composite' in b:
+            mod_doc.update(doc.get(b.replace('Composite', ''), {}))
+        if 'Storage' in b:
+            mod_doc.update(doc.get(b.replace('Storage', 'Container'), {}))
+        if 'ProjectServer' in b:
+            mod_doc.update(doc.get(b.replace('Project', 'Internet'), {}))
+        if 'SubLayer' in b:
+            mod_doc.update(doc.get('CIMSubLayer', {}))
+        mod_doc.update(doc.get(b, {}))
+        
     for name, val in attrs.items():
         _attr_type = type(val).__name__
         
@@ -228,11 +276,12 @@ def build_class_attrs(attrs: dict[str, Any], mods: dict[str, type], c: type, doc
             imports['typing'].add('Any')
         
         attr_doc = ""
-        if name in class_doc:
-            if len(class_doc[name]) >= 2:
-                attr_doc = f'\n{four_spaces}"""{class_doc[name][1]}"""'
+        avail_doc = class_doc.get(name, None) or mod_doc.get(name, None)
+        if avail_doc:
+            if len(avail_doc) >= 2:
+                attr_doc = f'\n{four_spaces}"""{avail_doc[1]}"""'
             else:
-                print(f'malformed doc for {class_name}.{name}: {class_doc[name]}')
+                print(f'malformed doc for {class_name}.{name}: {avail_doc}')
         elif WARN_MISSING:
             print(f'missing attr docs: {modname(c)}.{class_name}.{name}')
         class_string.append(f'{four_spaces}{name}: {_attr_type}{attr_doc}')
@@ -372,7 +421,7 @@ def build_cim():
 
     # Write Submodules
     for m_name, (imports, d_classes, all_) in mod_files.items():
-        print(f'writing {m_name}')
+        #print(f'writing {m_name}')
         (MOD_ROOT / f'cim/{m_name}.py').write_text(
             ''.join(
                 [
