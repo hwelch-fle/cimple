@@ -25,6 +25,18 @@ ParsedEnum = dict[Enum, tuple[str, Any]]
 
 four_spaces = '    '
 
+def get_attr_docs(cim_spec: Path):
+    class_docs: dict[str, dict[str, list[str]]] = defaultdict(dict[str, list[str]])
+    for fl in cim_spec.glob('*.md'):
+        with fl.open('rt') as md:
+            last_header = None
+            for line in md:
+                if line.startswith('#'):
+                    last_header = line.replace('#', '').lstrip().rstrip()
+                if last_header and line.startswith('|'):
+                    parts = [p.lstrip().rstrip() for p in line.split('|') if p]
+                    class_docs[last_header][parts[0]] = parts[1:] # type/ref | doc
+    return class_docs
 
 def load(mod: ModuleType = _cim) -> tuple[list[EnumType], list[type]]:
     modules: list[ModuleType] = [mod]
@@ -108,10 +120,11 @@ def write_literals(unique_enums: dict[EnumType, ParsedEnum]) -> None:
     )
 
 
-def build_class_attrs(attrs: dict[str, Any], mods: dict[str, type], c: type) -> tuple[list[str], dict[str, set[str]]]:
+def build_class_attrs(attrs: dict[str, Any], mods: dict[str, type], c: type, doc: dict[str, dict[str, list[str]]]) -> tuple[list[str], dict[str, set[str]]]:
     class_string: list[str] = []
     imports: defaultdict[str, set[str]] = defaultdict(set)
-    
+    class_name = c.__name__
+    class_doc = doc.get(class_name, {})
     for name, val in attrs.items():
         _attr_type = type(val).__name__
         
@@ -205,8 +218,14 @@ def build_class_attrs(attrs: dict[str, Any], mods: dict[str, type], c: type) -> 
             print(f'WARNING: {val} cannot be parsed Using `Any` with `None` default!')
             _attr_type = 'Any = None'
             imports['typing'].add('Any')
-            
-        class_string.append(f'{four_spaces}{name}: {_attr_type}')
+        
+        attr_doc = ""
+        if name in class_doc:
+            if len(class_doc[name]) >= 2:
+                attr_doc = f'\n{four_spaces}"""{class_doc[name][1]}"""'
+            else:
+                print(f'malformed doc for {class_name}.{name}: {class_doc[name]}')
+        class_string.append(f'{four_spaces}{name}: {_attr_type}{attr_doc}')
     return class_string, imports
 
 
@@ -221,7 +240,7 @@ def parse_imps(imps: dict[str, set[str]]) -> list[str]:
 
 
 def get_doc_link(c: type) -> str:
-    return f'https://github.com/Esri/cim-spec/blob/main/docs/v3/{modname(c)}.md#{c.__name__.lower()}-1'
+    return f'[cim-spec](https://github.com/Esri/cim-spec/blob/main/docs/v3/{modname(c)}.md#{c.__name__.lower()}-1)'
 
 
 def merge(root: dict[str, set[str]], trg: dict[str, set[str]]) -> dict[str, set[str]]:
@@ -299,6 +318,11 @@ def build_base_class() -> str:
         return super().__setattr__(name, value)
     """
 def build_cim():
+    cim_doc_path = Path('../../external/cim-spec/docs/v3')
+    doc: dict[str, dict[str, list[str]]] = {}
+    if cim_doc_path.exists():
+        doc = get_attr_docs(cim_doc_path)
+    
     enums, classes = load()
     (MOD_ROOT / 'cim').mkdir(parents=True, exist_ok=True)
     unique_enums: dict[EnumType, ParsedEnum] = {}
@@ -322,7 +346,7 @@ def build_cim():
         for c, attrs in unique_classes.items():
             if modname(c) != mod:
                 continue 
-            attr_strs, class_imps = build_class_attrs(attrs, class_names, c)
+            attr_strs, class_imps = build_class_attrs(attrs, class_names, c, doc)
             class_imps = {k: v for k, v in class_imps.items() if k != mod}
             imports = merge(imports, class_imps)
             all_.append(c.__name__)

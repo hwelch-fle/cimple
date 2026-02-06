@@ -1,0 +1,3 @@
+[submodule "external/cim-spec"]
+	path = external/cim-spec
+	url = https://github.com/Esri/cim-spec.git
