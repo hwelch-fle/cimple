@@ -2,12 +2,17 @@ from collections import defaultdict
 from enum import Enum, EnumType
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, Literal
 
 from arcpy import (
     cim as _cim, 
     version as _version,
 )
+
+TARGET_VERSION: Literal['v2', 'v3'] = 'v3'
+"""Target cim version (required appropriate CIM module and will pull docs from that version)"""
+WARN_MISSING = False
+"""Print out a message when an attribute is missing a definition in the docs"""
 
 __version__ = (0,1,0)
 MOD_ROOT = Path(__file__).parent
@@ -33,7 +38,7 @@ def get_attr_docs(cim_spec: Path):
             for line in md:
                 if line.startswith('#'):
                     last_header = line.replace('#', '').lstrip().rstrip()
-                if last_header and line.startswith('|'):
+                if last_header and line.startswith('| '):
                     parts = [p.lstrip().rstrip() for p in line.split('|') if p]
                     class_docs[last_header][parts[0]] = parts[1:] # type/ref | doc
     return class_docs
@@ -62,7 +67,6 @@ def load(mod: ModuleType = _cim) -> tuple[list[EnumType], list[type]]:
 
 def parse_enum(enum: EnumType):
     return {m: (m.name, m.value) for m in enum._value2member_map_.values()}
-
 
 def parse_cim(cls: type) -> tuple[type, dict[str, Any]]:
     attrs = {}
@@ -104,7 +108,7 @@ def build_literals(enums: dict[EnumType, ParsedEnum]) -> list[str]:
         # Write block of Literal[str, ...], Literal[int, ...], dict[str, int]
         literal_strings.append(f'\n# {e.__name__} Typing\n')
         literal_strings.append(f'{e.__name__} = {lit}\n')
-        literal_strings.append(f'"""{(e.__doc__ or "NO DOC").strip()}\n"""\n')
+        literal_strings.append(f'"""{(e.__doc__ or "NO DOC").strip()}"""\n')
         literal_strings.append(f'{e.__name__}_Map = {dict(parsed.values())}\n')
     return literal_strings
 
@@ -125,6 +129,10 @@ def build_class_attrs(attrs: dict[str, Any], mods: dict[str, type], c: type, doc
     imports: defaultdict[str, set[str]] = defaultdict(set)
     class_name = c.__name__
     class_doc = doc.get(class_name, {})
+    # Get all atrtribute doc from base classes since cimple is flat
+    bases = [b.__name__ for b in c.__mro__ if b.__name__ != 'object']
+    for b in bases:
+        class_doc.update(doc.get(b, {}))
     for name, val in attrs.items():
         _attr_type = type(val).__name__
         
@@ -225,6 +233,8 @@ def build_class_attrs(attrs: dict[str, Any], mods: dict[str, type], c: type, doc
                 attr_doc = f'\n{four_spaces}"""{class_doc[name][1]}"""'
             else:
                 print(f'malformed doc for {class_name}.{name}: {class_doc[name]}')
+        elif WARN_MISSING:
+            print(f'missing attr docs: {modname(c)}.{class_name}.{name}')
         class_string.append(f'{four_spaces}{name}: {_attr_type}{attr_doc}')
     return class_string, imports
 
@@ -240,7 +250,7 @@ def parse_imps(imps: dict[str, set[str]]) -> list[str]:
 
 
 def get_doc_link(c: type) -> str:
-    return f'[cim-spec](https://github.com/Esri/cim-spec/blob/main/docs/v3/{modname(c)}.md#{c.__name__.lower()}-1)'
+    return f'[cim-spec](https://github.com/Esri/cim-spec/blob/main/docs/{TARGET_VERSION}/{modname(c)}.md#{c.__name__.lower()}-1)'
 
 
 def merge(root: dict[str, set[str]], trg: dict[str, set[str]]) -> dict[str, set[str]]:
@@ -318,7 +328,7 @@ def build_base_class() -> str:
         return super().__setattr__(name, value)
     """
 def build_cim():
-    cim_doc_path = Path('../../external/cim-spec/docs/v3')
+    cim_doc_path = Path(f'../../external/cim-spec/docs/{TARGET_VERSION}')
     doc: dict[str, dict[str, list[str]]] = {}
     if cim_doc_path.exists():
         doc = get_attr_docs(cim_doc_path)
@@ -437,3 +447,6 @@ def check_cimple(root: str):
             print(e)
             print(f'Rebuilding cimple.cim')
             build_cim()
+            
+if __name__ == '__main__':
+    build_cim()
